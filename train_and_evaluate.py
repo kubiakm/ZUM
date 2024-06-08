@@ -16,12 +16,19 @@ def manhattan_distance(x1, x2):
 def minkowski_distance(x1, x2, p=2):
     return np.sum(np.abs(x1 - x2)**p)**(1/p)
 
-def train_for_different_distance_func(X, y, distance_funcs):
-    results = {distance_func: {'accuracies': [], 'scores': [], 'labels': []} for distance_func in distance_funcs}
+def train_for_different_distance_func(X, y, distance_names):
+    distance_funcs = {
+        'euclidean_distance': euclidean_distance,
+        'manhattan_distance': manhattan_distance,
+        'minkowski_distance': lambda x1, x2: minkowski_distance(x1, x2, p=2)
+    }
+
+    results = {name: {'accuracies': [], 'scores': [], 'labels': []} for name in distance_names}
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
-    for distance_func in distance_funcs:
-        detector = KNNAnomalyDetector(k=10, distance_func=distance_func, knn_or_kth=1)
+    for name in distance_names:
+        func = distance_funcs[name]
+        detector = KNNAnomalyDetector(k=10, distance_func=func, knn_or_kth=1)
         for train_index, test_index in skf.split(X, y):
             X_train, X_test = X[train_index], X[test_index]
             y_train, y_test = y[train_index], y[test_index]
@@ -34,23 +41,23 @@ def train_for_different_distance_func(X, y, distance_funcs):
             precision, recall, _ = precision_recall_curve(y_test, scores)
             pr_auc = auc(recall, precision)
 
-            results[distance_func]['accuracies'].append(np.mean(predictions == y_test))
-            results[distance_func]['scores'].extend(scores)
-            results[distance_func]['labels'].extend(y_test)
+            results[name]['accuracies'].append(np.mean(predictions == y_test))
+            results[name]['scores'].extend(scores)
+            results[name]['labels'].extend(y_test)
 
-    accuracies = [np.mean(results[distance_func]['accuracies']) for distance_func in distance_funcs]
+    accuracies = [np.mean(results[name]['accuracies']) for name in distance_names]
     plt.figure(figsize=(10, 5))
-    sns.barplot(x=distance_funcs, y=accuracies)
+    sns.barplot(x=distance_names, y=accuracies)
     plt.title('Accuracy by different distance metrics')
     plt.xlabel('Distance metrics')
     plt.ylabel('Accuracy')
     plt.show()
 
     plt.figure(figsize=(10, 8))
-    for k in results:
-        scores = results[distance_func]['scores']
-        labels = results[distance_func]['labels']
-        plot_PR_curve(scores, labels, f'KNN Distance function={distance_func}')
+    for name in distance_names:
+        scores = results[name]['scores']
+        labels = results[name]['labels']
+        plot_PR_curve(scores, labels, f'KNN Distance function={name}')
     plt.title('Precision-Recall curves')
     plt.show()
     
@@ -114,14 +121,15 @@ def train_for_knn_or_kth(X, y, knn_or_kth):
             results[choice]['scores'].extend(scores)
             results[choice]['labels'].extend(y_test)
 
+    approach_labels = ['Kth-Nearest Neighbour' if choice == 0 else 'K-Nearest Neighbours' for choice in knn_or_kth]
     accuracies = [np.mean(results[choice]['accuracies']) for choice in knn_or_kth]
     plt.figure(figsize=(10, 5))
-    sns.barplot(x=knn_or_kth, y=accuracies)
-    plt.title('Accuracy KNN and KTH approach')
-    plt.xlabel('Distance function')
+    sns.barplot(x=approach_labels, y=accuracies)
+    plt.title('Accuracy by KNN and KTH Approach')
+    plt.xlabel('Approach')
     plt.ylabel('Accuracy')
     plt.show()
-
+    
     plt.figure(figsize=(10, 8))
     for choice in results:
         scores = results[choice]['scores']
@@ -136,31 +144,34 @@ def train_for_knn_or_kth(X, y, knn_or_kth):
     
     
 def train_for_anomalies_and_non_anomalies(X, y, a_or_na):
-    results = {i: {'accuracies': [], 'scores': [], 'labels': []} for i in a_or_na}
+    results = {choice: {'accuracies': [], 'scores': [], 'labels': []} for choice in a_or_na}
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
     detector = KNNAnomalyDetector(k=10, distance_func=euclidean_distance, knn_or_kth=1)
-    for train_index, test_index in skf.split(X, y):
-        X_train, X_test = X[train_index], X[test_index]
-        y_train, y_test = y[train_index], y[test_index]
+    
+    for choice in a_or_na:
+        for train_index, test_index in skf.split(X, y):
+            X_train, X_test = X[train_index], X[test_index]
+            y_train, y_test = y[train_index], y[test_index]
 
-        if a_or_na == 1:
-            detector.fit(X_train)
-        else:
-            detector.fit(X_train==1)
+            if choice == 1:
+                detector.fit(X_train)
+            else:
+                detector.fit(X_train[y_train == 1])
 
-        predictions = detector.predict(X_test, detector.threshold_)
-        scores = detector.decision_function(X_test)
-        scores = -scores
-        precision, recall, _ = precision_recall_curve(y_test, scores)
-        pr_auc = auc(recall, precision)
+            predictions = detector.predict(X_test, detector.threshold_)
+            scores = detector.decision_function(X_test)
+            scores = -scores
+            precision, recall, _ = precision_recall_curve(y_test, scores)
+            pr_auc = auc(recall, precision)
 
-        results[i]['accuracies'].append(np.mean(predictions == y_test))
-        results[i]['scores'].extend(scores)
-        results[i]['labels'].extend(y_test)
+            results[choice]['accuracies'].append(np.mean(predictions == y_test))
+            results[choice]['scores'].extend(scores)
+            results[choice]['labels'].extend(y_test)
 
-    accuracies = [np.mean(results[i]['accuracies']) for i in a_or_na]
+    approach_labels = ['Non-anomaly training' if choice == 0 else 'Anomaly training' for choice in a_or_na]
+    accuracies = [np.mean(results[choice]['accuracies']) for choice in a_or_na]
     plt.figure(figsize=(10, 5))
-    sns.barplot(x=a_or_na, y=accuracies)
+    sns.barplot(x=approach_labels, y=accuracies)
     plt.title('Accuracy anomalies and non-anomalies training')
     plt.xlabel('Approach')
     plt.ylabel('Accuracy')

@@ -21,15 +21,10 @@ class KNNAnomalyDetector:
                 distances[j, i] = distances[i, j]
 
         if self.knn_or_kth == 0:
-            # use k-th neighbour distance
             self.anomaly_scores_ = self.kth_neighbours_distance(distances)
         else:
-            # find k nearest neighbours
-            nearest_neighbors = np.argsort(distances, axis=1)[:, 1:self.k]
-            # mean distance from k nearest neighbours
+            nearest_neighbors = np.argsort(distances, axis=1)[:, 1:self.k+1]
             self.anomaly_scores_ = np.mean(distances[np.arange(self.n_samples)[:, None], nearest_neighbors], axis=1)
-            self.threshold_ = np.percentile(self.anomaly_scores_, self.threshold_percentile)
-        self.anomaly_scores_ = np.mean(distances[np.arange(self.n_samples)[:, None], nearest_neighbors], axis=1)
 
         # if there's no threshold given, we determine treshold using percentile
         if self.external_threshold is None:
@@ -37,6 +32,7 @@ class KNNAnomalyDetector:
         else:
             self.threshold_ = self.external_threshold
         return self
+        
 
     def predict(self, X, threshold=None):
         # use external threshold if given, otherwise self.threshold_
@@ -53,8 +49,7 @@ class KNNAnomalyDetector:
                 distances[i, j] = self.distance_func(X[i], self.X_train[j])
 
         if self.knn_or_kth == 0:
-            # use k-th neighbour distance
-            self.anomaly_scores_ = self.kth_neighbours_distance(distances)
+            scores = self.kth_neighbours_distance(distances)
         else:
             nearest_neighbors = np.argsort(distances, axis=1)[:, :self.k]
             scores = np.mean(distances[np.arange(len(X))[:, None], nearest_neighbors], axis=1)
@@ -66,5 +61,5 @@ class KNNAnomalyDetector:
 
     def kth_neighbours_distance(self, distances):
         nearest_neighbors = np.argsort(distances, axis=1)
-        kth_distances = distances[np.arange(distances.shape[0]), nearest_neighbors[:, self.k]]  # choose kth nearest neighbour distance
+        kth_distances = distances[np.arange(distances.shape[0]), nearest_neighbors[:, self.k]]
         return kth_distances
