@@ -246,6 +246,7 @@ def test_loop(X, y, k_list=[5], distances=[None], score_funcs=[None], n_splits=5
                                 decisions_arr.append(None)
                             filter_arr.append(filter)
                             threshold_arr.append(th)
+                        
                 
     result_df = pd.DataFrame({"f1":f1_arr, "precision":precision_arr, "recall":recall_arr, 
                               "PR_AUC":PR_AUC_arr, "distance":distance_arr, 

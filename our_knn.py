@@ -1,8 +1,9 @@
 import numpy as np
 import numba as nb
+from sklearn.base import BaseEstimator, ClassifierMixin
 
 
-class KNNAnomalyDetector:
+class KNNAnomalyDetector(ClassifierMixin, BaseEstimator):
     def __init__(self, k=5, threshold_percentile=95, distance_func=None, score_func=None, external_threshold=None):
         self.k = k
         self.threshold_percentile = threshold_percentile
@@ -29,7 +30,6 @@ class KNNAnomalyDetector:
         return self
         
     def predict(self, X, threshold=None):
-        # use external threshold if given, otherwise self.threshold_
         X = np.array(X)
         if threshold is None:
             threshold = self.threshold_
@@ -45,9 +45,7 @@ class KNNAnomalyDetector:
     def decision_function(self, X):
         # proess input data instead of train data
         X = np.array(X)
-        
         distances = self.calc_distances_pred(self.X_train, X, self.distance_func)
-
         scores = self.score_func(distances, X, self.k)
 
         return scores
@@ -56,6 +54,7 @@ class KNNAnomalyDetector:
     def default_score(distances, X, k):
         # default decition is based on mean distance to k nearest neighbors
         nearest_neighbors = np.argsort(distances, axis=1)[:, :k]
+        nearest_neighbors = nearest_neighbors.reshape((-1, k)) # ensure 2d
         return np.mean(distances[np.arange(len(X))[:, None], nearest_neighbors], axis=1)
 
     @staticmethod
@@ -64,7 +63,7 @@ class KNNAnomalyDetector:
         # compute distance between points
         distances = np.zeros((n_samples, n_samples))
         for i in nb.prange(n_samples):
-            for j in range(i + 1, n_samples):
+            for j in nb.prange(i + 1, n_samples):
                 distances[i, j] = distance_func(X[i], X[j])
                 distances[j, i] = distances[i, j]
         return distances
@@ -74,7 +73,7 @@ class KNNAnomalyDetector:
     def calc_distances_pred(X_train, X, distance_func):
         distances = np.zeros((len(X), len(X_train)))
         for i in nb.prange(len(X)):
-            for j in range(len(X_train)):
+            for j in nb.prange(len(X_train)):
                 distances[i, j] = distance_func(X[i], X_train[j])
         return distances
 
