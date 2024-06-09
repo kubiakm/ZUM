@@ -1,30 +1,26 @@
 import numpy as np
+import numba as nb
+
+
 class KNNAnomalyDetector:
-    def __init__(self, k=5, threshold_percentile=95, distance_func=None, external_threshold=None, knn_or_kth=None):
+    def __init__(self, k=5, threshold_percentile=95, distance_func=None, decision_func=None, external_threshold=None):
         self.k = k
         self.threshold_percentile = threshold_percentile
         self.distance_func = distance_func if distance_func is not None else self.default_distance
+        self.decision_func = decision_func if decision_func is not None else self.decision_function
         self.external_threshold = external_threshold
         self.threshold_ = None
         self.anomaly_scores_ = None
-        self.knn_or_kth = knn_or_kth
 
     def fit(self, X):
+        X = np.array(X)
         self.n_samples = len(X)
         self.X_train = X.copy()  # save train data copy
-        distances = np.zeros((self.n_samples, self.n_samples))
+        
+        distances = self.calc_distances(self.n_samples, self.X_train, self.distance_func)
 
-        # compute distance between points
-        for i in range(self.n_samples):
-            for j in range(i + 1, self.n_samples):
-                distances[i, j] = self.distance_func(X[i], X[j])
-                distances[j, i] = distances[i, j]
-
-        if self.knn_or_kth == 0:
-            self.anomaly_scores_ = self.kth_neighbours_distance(distances)
-        else:
-            nearest_neighbors = np.argsort(distances, axis=1)[:, 1:self.k+1]
-            self.anomaly_scores_ = np.mean(distances[np.arange(self.n_samples)[:, None], nearest_neighbors], axis=1)
+        nearest_neighbors = np.argsort(distances, axis=1)[:, 1:self.k+1]
+        self.anomaly_scores_ = np.mean(distances[np.arange(self.n_samples)[:, None], nearest_neighbors], axis=1)
 
         # if there's no threshold given, we determine treshold using percentile
         if self.external_threshold is None:
@@ -33,33 +29,60 @@ class KNNAnomalyDetector:
             self.threshold_ = self.external_threshold
         return self
         
-
     def predict(self, X, threshold=None):
         # use external threshold if given, otherwise self.threshold_
+        X = np.array(X)
         if threshold is None:
             threshold = self.threshold_
         scores = self.decision_function(X)
-        return scores > threshold
-
+        predictions = (scores > threshold).astype(int)
+        # scale output to match sklearn anomaly detection functions
+        return predictions * -2 + 1 
+    
+    def fit_predict(self, X, threshold=None):
+        self.fit(X)
+        return self.predict(X, threshold=threshold)
+    
     def decision_function(self, X):
         # proess input data instead of train data
-        distances = np.zeros((len(X), len(self.X_train)))
-        for i in range(len(X)):
-            for j in range(len(self.X_train)):
-                distances[i, j] = self.distance_func(X[i], self.X_train[j])
+        X = np.array(X)
+        
+        distances = self.calc_distances_pred(self.X_train, X, self.distance_func)
 
-        if self.knn_or_kth == 0:
-            scores = self.kth_neighbours_distance(distances)
-        else:
-            nearest_neighbors = np.argsort(distances, axis=1)[:, :self.k]
-            scores = np.mean(distances[np.arange(len(X))[:, None], nearest_neighbors], axis=1)
+        # default decition is based on mean distance to k nearest neighbors
+        nearest_neighbors = np.argsort(distances, axis=1)[:, :self.k]
+        scores = np.mean(distances[np.arange(len(X))[:, None], nearest_neighbors], axis=1)
+
         return scores
 
     @staticmethod
+    @nb.jit(nopython=True) 
+    def calc_distances(n_samples, X, distance_func):
+        # compute distance between points
+        distances = np.zeros((n_samples, n_samples))
+        for i in range(n_samples):
+            for j in range(i + 1, n_samples):
+                distances[i, j] = distance_func(X[i], X[j])
+                distances[j, i] = distances[i, j]
+        return distances
+    
+    @staticmethod
+    @nb.jit(nopython=True) 
+    def calc_distances_pred(X_train, X, distance_func):
+        distances = np.zeros((len(X), len(X_train)))
+        for i in range(len(X)):
+            for j in range(len(X_train)):
+                distances[i, j] = distance_func(X[i], X_train[j])
+        return distances
+
+    @staticmethod
+    @nb.jit(nopython=True)  
     def default_distance(x1, x2):
         return np.sqrt(np.sum((x1 - x2) ** 2))
-
-    def kth_neighbours_distance(self, distances):
+    
+    @staticmethod
+    @nb.jit(nopython=True)  
+    def kth_neighbours_distance(self, distances, k):
         nearest_neighbors = np.argsort(distances, axis=1)
-        kth_distances = distances[np.arange(distances.shape[0]), nearest_neighbors[:, self.k]]
+        kth_distances = distances[np.arange(distances.shape[0]), nearest_neighbors[:, k]]
         return kth_distances
