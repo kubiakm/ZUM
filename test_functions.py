@@ -58,7 +58,10 @@ def test_loop(X, y, k_list=[5], distances=[None], score_funcs=[None], n_splits=5
                             else:
                                 distance_arr.append(None)
                             if scr is not None:
-                                decisions_arr.append(scr.__name__)
+                                if type(scr) == str:
+                                    decisions_arr.append(scr)  
+                                else:
+                                    decisions_arr.append(scr.__name__)
                             else:
                                 decisions_arr.append(None)
                             filter_arr.append(filter)
