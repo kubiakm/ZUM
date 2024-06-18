@@ -77,7 +77,7 @@ def plot_pca_3d(data_x, data_y, title='3d PCA dataset visualization'):
     plt.show()
 
 def plot_PR_curve(scores, labels, alg_name, title='Precision-Recall Curve', single=False):
-    precision, recall, _ = sklearn.metrics.precision_recall_curve(labels, scores)
+    precision, recall, _ = sklearn.metrics.precision_recall_curve(labels, scores, pos_label=-1)
     pr_auc = sklearn.metrics.auc(recall, precision)
 
     if single:

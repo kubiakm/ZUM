@@ -5,15 +5,41 @@ from sklearn.base import BaseEstimator, ClassifierMixin
 
 class KNNAnomalyDetector(ClassifierMixin, BaseEstimator):
     def __init__(self, k=5, threshold_percentile=95, distance_func=None, score_func=None, external_threshold=None):
+        distanceLookup = {
+            "euclidean": self.default_distance,
+            "minkowski3": self.minkowski_distance_p3,
+            "manhattan": self.manhattan_distance
+        }
+
+        scoreLookup = {
+            "avgNNearest": self.default_score,
+            "distFromNth": self.distance_from_nth,
+            "averageDist": self.distance_avg,
+            "density": self.density,
+            "LOF": self.lof_score
+        }
+
         self.k = k
         self.threshold_percentile = threshold_percentile
-        self.distance_func = distance_func if distance_func is not None else self.default_distance
-        self.score_func = score_func if score_func is not None else self.default_score
-        if self.score_func == "LOF":
-            self.score_func = self.lof_score
+        if distance_func is None:
+            self.distance_func = self.default_distance # euclidean
+        elif type(distance_func) == str:
+            self.distance_func = distanceLookup[distance_func]
+        else:
+            self.distance_func = distance_func
+
+        if score_func is None:
+            self.score_func = self.default_score #avg n neighbors
+        elif type(score_func) == str:
+            self.score_func = scoreLookup[score_func]
+        else:
+            self.score_func = score_func
+
         self.external_threshold = external_threshold
         self.threshold_ = None
         self.anomaly_scores_ = None
+
+        self.classes_ = [-1, 1]
 
     def fit(self, X):
         X = np.array(X)
@@ -36,7 +62,7 @@ class KNNAnomalyDetector(ClassifierMixin, BaseEstimator):
         if threshold is None:
             threshold = self.threshold_
         scores = self.decision_function(X)
-        predictions = (scores > threshold).astype(int)
+        predictions = (scores < threshold).astype(int)
         # scale output to match sklearn anomaly detection functions
         return predictions * -2 + 1 
     
@@ -107,3 +133,32 @@ class KNNAnomalyDetector(ClassifierMixin, BaseEstimator):
     def distance_from_nth(distances, X, k):
         kth_nearest_neighbor = np.argsort(distances, axis=1)[:, k-1:k]
         return distances[np.arange(len(X))[:, None], kth_nearest_neighbor]
+
+    @staticmethod
+    @nb.jit(nopython=True)
+    def manhattan_distance(x1, x2):
+        return np.sum(np.abs(x1 - x2))
+
+    @staticmethod
+    @nb.jit(nopython=True)
+    def minkowski_distance_p3(x1, x2, p=3):
+        return np.sum(np.abs(x1 - x2)**p)**(1/p)
+    
+    @staticmethod
+    def distance_from_nth(distances, X, k):
+        kth_nearest_neighbor = np.argsort(distances, axis=1)[:, k-1:k]
+        return distances[np.arange(len(X))[:, None], kth_nearest_neighbor]
+
+    @staticmethod
+    def distance_avg(distances, X, k):
+        return np.mean(distances, axis=1)
+
+    @staticmethod
+    def density(distances, X, k, fitted_detector=None):
+        nearest_neighbors = np.argsort(distances, axis=1)[:, :k]
+        if fitted_detector is None:
+            fitted_detector = KNNAnomalyDetector(k=k)
+            fitted_detector.fit(nearest_neighbors)
+        neighbor_scores = fitted_detector.predict(nearest_neighbors)
+        neighbor_scores = nearest_neighbors.reshape((-1, k)) # ensure 2d
+        return np.mean(neighbor_scores, axis=1)

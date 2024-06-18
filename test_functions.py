@@ -17,6 +17,9 @@ def test_loop(X, y, k_list=[5], distances=[None], score_funcs=[None], n_splits=5
     precision_arr = []
     recall_arr = []
     PR_AUC_arr = []
+    precision_anomaly_arr = []
+    recall_anomaly_arr = []
+    PR_AUC_anomaly_arr = []
     distance_arr = []
     k_neighbors_arr = []
     cv_arr = []
@@ -44,17 +47,26 @@ def test_loop(X, y, k_list=[5], distances=[None], score_funcs=[None], n_splits=5
 
                             scores = detector.decision_function(X_test)
                             precision, recall, _ = precision_recall_curve(y_test, -scores)
+                            precision_anomaly, recall_anomaly, _ = precision_recall_curve(y_test, scores, pos_label=-1, )
+
                             pr_auc = auc(recall, precision)
+                            pr_auc_anomaly = auc(recall_anomaly, precision_anomaly)
                             f1 = f1_score(y_test, predictions, average='binary')
 
                             f1_arr.append(f1)
                             precision_arr.append(precision)
                             recall_arr.append(recall)
                             PR_AUC_arr.append(pr_auc)
+                            precision_anomaly_arr.append(precision_anomaly)
+                            recall_anomaly_arr.append(recall_anomaly)
+                            PR_AUC_anomaly_arr.append(pr_auc_anomaly)
                             k_neighbors_arr.append(k)
                             cv_arr.append(i)
                             if d is not None:
-                                distance_arr.append(d.__name__)
+                                if type(d) == str:
+                                    distance_arr.append(d)  
+                                else:
+                                    distance_arr.append(d.__name__)
                             else:
                                 distance_arr.append(None)
                             if scr is not None:
@@ -72,6 +84,7 @@ def test_loop(X, y, k_list=[5], distances=[None], score_funcs=[None], n_splits=5
                               "PR_AUC":PR_AUC_arr, "distance":distance_arr, 
                               "K neighbors":k_neighbors_arr, "CV":cv_arr, 
                               "score function":decisions_arr, "filter inliers":filter_arr,
-                              "percentile threshold":threshold_arr})
+                              "percentile threshold":threshold_arr, "precision anomaly": precision_anomaly_arr, 
+                              "recall anomaly": recall_anomaly_arr, "PR AUC anomaly": PR_AUC_anomaly_arr})
     
     return result_df
